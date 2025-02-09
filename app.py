@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-
 import json
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 
+import cv2
 from PIL import ExifTags, Image, ImageTk
 
 
@@ -59,7 +58,7 @@ class LabelingApp:
         self.canvas = tk.Canvas(self.frame_center, bg="white")
         self.canvas.pack(expand=True, fill=tk.BOTH)
         # Bind các sự kiện chuột
-        self.canvas.bind("<ButtonPress-1>", self.on_mouse_press)
+        self.canvas.bind("<Button-1>", self.on_mouse_press)
         self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
         self.canvas.bind("<Button-3>", self.cancel_current_label)  # Bind chuột phải để hủy đánh label hiện tại
@@ -70,8 +69,11 @@ class LabelingApp:
         self.text_entry = tk.Entry(self.info_frame)
         self.text_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         tk.Label(self.info_frame, text="Label Name:", bg="lightblue").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.label_entry = tk.Entry(self.info_frame)
-        self.label_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+        self.label_name_var = tk.StringVar(self.info_frame)
+        self.label_name_var.set("name")  # Set default value
+        self.label_name_options = ["name", "mfg", "exp", "weight", "other"]
+        self.label_name_menu = tk.OptionMenu(self.info_frame, self.label_name_var, *self.label_name_options)
+        self.label_name_menu.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         tk.Label(self.info_frame, text="Linking (e.g., '1 2'):", bg="lightblue").grid(row=2, column=0, sticky="w", padx=5, pady=5)
         self.linking_entry = tk.Entry(self.info_frame)
         self.linking_entry.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
@@ -92,7 +94,7 @@ class LabelingApp:
         # Hiển thị danh sách labels
         self.label_listbox = tk.Listbox(self.frame_right, selectmode=tk.SINGLE)
         self.label_listbox.pack(expand=True, fill=tk.BOTH, padx=10, pady=5)
-        self.label_listbox.bind("<Double-Button-1>", self.on_label_select)
+        self.label_listbox.bind("<<ListboxSelect>>", self.on_label_select)
         self.delete_button = tk.Button(self.frame_right, text="Delete Selected Label", command=self.delete_selected_label)
         self.delete_button.pack(fill=tk.X, padx=10, pady=5)
 
@@ -213,7 +215,7 @@ class LabelingApp:
 
     def draw_grid(self, x_offset, y_offset, width, height):
         """Vẽ lưới tọa độ phù hợp với kích thước ảnh."""
-        grid_size = 10  # Kích thước mỗi ô lưới
+        grid_size = 30  # Kích thước mỗi ô lưới
         for x in range(0, width, grid_size):
             self.canvas.create_line(x_offset + x, y_offset, x_offset + x, y_offset + height, fill="gray", dash=(2, 2))
         for y in range(0, height, grid_size):
@@ -245,10 +247,9 @@ class LabelingApp:
     def reset_input_fields(self):
         """Reset tất cả các ô nhập liệu."""
         self.text_entry.delete(0, tk.END)
-        self.label_entry.delete(0, tk.END)
         self.linking_entry.delete(0, tk.END)
         self.text_entry.config(state="normal")  # Đảm bảo Text Entry không bị vô hiệu hóa
-        self.label_entry.config(state="normal")  # Đảm bảo Label Name Entry không bị vô hiệu hóa
+        self.label_name_var.set("name")  # Reset Label Name to default value
         self.current_label = None
         self.is_labeling_word = False
         self.word_boxes = []
@@ -322,9 +323,7 @@ class LabelingApp:
             self.text_entry.delete(0, tk.END)
             self.text_entry.insert(0, label["text"])
             self.text_entry.config(state="disabled")  # Không cho phép chỉnh sửa Text
-            self.label_entry.delete(0, tk.END)
-            self.label_entry.insert(0, label["label"])
-            self.label_entry.config(state="disabled")  # Không cho phép chỉnh sửa Label Name
+            self.label_name_var.set(label["label"])  # Set the selected label name
             self.linking_entry.delete(0, tk.END)
             self.linking_entry.insert(0, " ".join([str(id) for pair in label.get("linking", []) for id in pair]))
 
@@ -381,7 +380,7 @@ class LabelingApp:
     def save_current_label(self):
         """Lưu label hiện tại."""
         text = self.text_entry.get().strip()
-        label_name = self.label_entry.get().strip()
+        label_name = self.label_name_var.get().strip()
         linking_input = self.linking_entry.get().strip()
         # Kiểm tra xem Text và Label Name có rỗng hay không
         if not text:
@@ -430,16 +429,18 @@ class LabelingApp:
                 self.current_word_index = 0
                 self.is_labeling_word = True
                 self.status_label.config(text=f"Please draw 4 points for the word: '{words[self.current_word_index]}'")
-            # Lưu labels vào file JSON ngay lập tức
+                # Lưu labels vào file JSON ngay lập tức
+                self.save_labels()
+                return
+            # Reset các ô nhập liệu sau khi lưu label
+            self.reset_input_fields()
+            # Lưu labels vào file JSON
             self.save_labels()
-            return
-        # Reset các ô nhập liệu sau khi lưu label
-        self.reset_input_fields()
-        # Lưu labels vào file JSON
-        self.save_labels()
-        # Cập nhật giao diện thời gian thực
-        self.update_thumbnail_status()
-        self.status_label.config(text="Label saved successfully.")
+            # Cập nhật giao diện thời gian thực
+            self.update_thumbnail_status()
+            self.status_label.config(text="Label saved successfully.")
+        else:
+            self.status_label.config(text="No current label to save.")
 
     def save_and_next(self):
         """Lưu nhãn hiện tại và chuyển sang ảnh tiếp theo."""
@@ -511,7 +512,7 @@ class LabelingApp:
             }
             self.id_counter += 1
             self.text_entry.delete(0, tk.END)
-            self.label_entry.delete(0, tk.END)
+            self.label_name_var.set("name")  # Reset Label Name to default value
             self.status_label.config(text="Please enter Text and Label Name.")
             self.current_points = []
             self.redraw_labels()
@@ -531,15 +532,15 @@ class LabelingApp:
         else:
             new_width = canvas_width
             new_height = int(new_width / aspect_ratio)
-        x_offset = (canvas_width - new_width) // 2
-        y_offset = (canvas_height - new_height) // 2
+        self.x_offset = (canvas_width - new_width) // 2
+        self.y_offset = (canvas_height - new_height) // 2
         for label in self.labels:
             # Chuyển đổi tọa độ từ kích thước gốc sang kích thước hiển thị
             scaled_box = []
             for point in label["box"]:
                 scaled_point = (
-                    int(point[0] / self.scale_x) + x_offset,
-                    int(point[1] / self.scale_y) + y_offset
+                    int(point[0] / self.scale_x) + self.x_offset,
+                    int(point[1] / self.scale_y) + self.y_offset
                 )
                 scaled_box.append(scaled_point)
             # Vẽ đa giác cho box tổng
@@ -554,7 +555,7 @@ class LabelingApp:
                         continue  # Bỏ qua word này nếu box không hợp lệ
                     # Chuyển đổi tọa độ về kích thước hiển thị
                     scaled_word_box = [
-                        (int(point[0] / self.scale_x) + x_offset, int(point[1] / self.scale_y) + y_offset)
+                        (int(point[0] / self.scale_x) + self.x_offset, int(point[1] / self.scale_y) + self.y_offset)
                         for point in word["box"]
                     ]
                     print(f"Drawing word box: {scaled_word_box}")
@@ -577,7 +578,15 @@ class LabelingApp:
             # Đảm bảo points là danh sách chứa 4 điểm
             if len(points) == 4:
                 corrected_points = self.correct_coordinates(points)
-                word["box"] = corrected_points  # Lưu dưới dạng danh sách 4 điểm
+                # Chuyển đổi tọa độ về kích thước gốc của ảnh
+                original_points = []
+                for point in corrected_points:
+                    original_point = (
+                        int((point[0] - self.x_offset) * self.scale_x),
+                        int((point[1] - self.y_offset) * self.scale_y)
+                    )
+                    original_points.append(original_point)
+                word["box"] = original_points  # Lưu dưới dạng danh sách 4 điểm
                 print(f"Saved word box: {word['box']}")
                 self.current_word_index += 1
                 if self.current_word_index < len(self.word_boxes):
@@ -592,8 +601,8 @@ class LabelingApp:
                     self.update_label_listbox()
                     self.reset_input_fields()
                     self.status_label.config(text="Labeling complete. Please enter linking information.")
-                # Lưu labels vào file JSON ngay lập tức
-                self.save_labels()
+                    # Lưu labels vào file JSON ngay lập tức
+                    self.save_labels()
             else:
                 print(f"Invalid points for word box: {points}")
                 self.status_label.config(text="Error: Invalid points for word box.")
