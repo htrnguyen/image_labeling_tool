@@ -128,3 +128,11 @@ Image Labeling Tool là một ứng dụng hỗ trợ gán nhãn (label) cho pro
       ]
     }
     ```
+
+## Demo
+
+Demo `app.py`
+![Demo app.py](assets/demo_app.png)
+
+Demo `draw_label_on_image.py`
+![Demo draw_label_on_image.py](assets/demo_draw_label_on_image.png)
