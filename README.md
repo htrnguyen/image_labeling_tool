@@ -2,7 +2,7 @@
 
 ## Giới thiệu
 
-Image Labeling Tool là một ứng dụng hỗ trợ gán nhãn (label) cho project [GeoLayoutLM](https://github.com/AlibabaResearch/AdvancedLiterateMachinery/tree/main/DocumentUnderstanding/GeoLayoutLM). Công cụ này đặc biệt hữu ích trong các tác vụ xử lý ảnh và học máy, nơi cần tạo dữ liệu gán nhãn để huấn luyện mô hình. Ứng dụng cung cấp giao diện đồ họa người dùng (GUI) trực quan, dễ sử dụng, cho phép người dùng vẽ bounding box, nhập thông tin văn bản, và lưu kết quả dưới dạng file JSON.
+Image Labeling Tool là một ứng dụng hỗ trợ gán nhãn (label) cho project [GeoLayoutLM](https://github.com/AlibabaResearch/AdvancedLiterateMachinery/tree/main/DocumentUnderstanding/GeoLayoutLM).
 
 ## Yêu cầu hệ thống
 
@@ -100,6 +100,16 @@ Image Labeling Tool là một ứng dụng hỗ trợ gán nhãn (label) cho pro
 ### 6. Hỗ trợ thời gian thực
 
 -   **Hiển thị tọa độ chuột**: Khi di chuyển chuột trên ảnh, tọa độ gốc của ảnh sẽ được hiển thị ở góc dưới bên phải.
+
+### 7. Xoay ảnh
+
+-   **Xoay trái**: Nhấn nút "Rotate Left" để xoay ảnh sang trái 90 độ.
+-   **Xoay phải**: Nhấn nút "Rotate Right" để xoay ảnh sang phải 90 độ.
+
+### 8. Zoom ảnh
+
+-   **Zoom in/out**: Sử dụng con lăn chuột để phóng to hoặc thu nhỏ ảnh.
+-   **Pan ảnh**: Nhấn và giữ chuột giữa để di chuyển ảnh khi đang phóng to.
 
 ## File đầu ra
 

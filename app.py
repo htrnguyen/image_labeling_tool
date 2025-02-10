@@ -32,6 +32,14 @@ class LabelingApp:
         self.current_points = []  # Lưu trữ các điểm hiện tại của bounding box
         self.word_box_points = []  # Lưu trữ các điểm hiện tại của bounding box cho từng từ
         self.thumbnail_refs = {}  # Lưu trữ tham chiếu đến thumbnail để tránh garbage collection
+        self.rotation_angle = 0  # Góc xoay hiện tại của ảnh
+        self.zoom_level = 1.0  # Mức độ zoom hiện tại
+        self.pan_start_x = 0
+        self.pan_start_y = 0
+        self.pan_offset_x = 0
+        self.pan_offset_y = 0
+        self.image_original = None  # Lưu trữ ảnh gốc để zoom và pan mượt mà hơn
+        self.image = None  # Lưu trữ ảnh hiện tại để hiển thị
         # Giao diện chính
         self.setup_ui()
         self.load_image_list()
@@ -62,6 +70,10 @@ class LabelingApp:
         self.canvas.bind("<B1-Motion>", self.on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_mouse_release)
         self.canvas.bind("<Button-3>", self.cancel_current_label)  # Bind chuột phải để hủy đánh label hiện tại
+        # Bind các sự kiện zoom và pan
+        self.canvas.bind("<MouseWheel>", self.on_zoom)
+        self.canvas.bind("<ButtonPress-2>", self.on_pan_start)
+        self.canvas.bind("<B2-Motion>", self.on_pan_move)
         # Cột 3: Các nút chức năng và bảng nhập thông tin
         self.info_frame = tk.Frame(self.frame_right, bg="lightblue")
         self.info_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -88,6 +100,11 @@ class LabelingApp:
         self.edit_id_button.grid(row=6, column=0, columnspan=2, pady=5)
         self.edit_linking_button = tk.Button(self.info_frame, text="Edit Linking", command=self.edit_selected_linking)
         self.edit_linking_button.grid(row=7, column=0, columnspan=2, pady=5)
+        # Thêm các nút điều khiển xoay ảnh
+        self.rotate_left_button = tk.Button(self.info_frame, text="Rotate Left", command=self.rotate_left)
+        self.rotate_left_button.grid(row=9, column=0, pady=5)
+        self.rotate_right_button = tk.Button(self.info_frame, text="Rotate Right", command=self.rotate_right)
+        self.rotate_right_button.grid(row=9, column=1, pady=5)
         # Label thông báo
         self.status_label = tk.Label(self.info_frame, text="Please draw a bounding box.", bg="lightblue", fg="blue")
         self.status_label.grid(row=8, column=0, columnspan=2, pady=10)
@@ -161,13 +178,18 @@ class LabelingApp:
         """Tải và hiển thị ảnh."""
         self.current_image_path = image_path
         self.current_image_index = self.image_list.index(image_path)
-        self.image = Image.open(image_path)
-        self.image = self.rotate_image_based_on_exif(self.image)  # Xoay ảnh dựa trên EXIF
+        self.image_original = Image.open(image_path)
+        self.image_original = self.rotate_image_based_on_exif(self.image_original)
+        self.image_original = self.image_original.rotate(self.rotation_angle, expand=True)
+        self.zoom_level = 1.0  # Reset zoom level
+        self.pan_offset_x = 0  # Reset pan offset
+        self.pan_offset_y = 0  # Reset pan offset
         self.canvas.delete("all")
         # Resize ảnh để vừa với canvas nhưng giữ đúng tỷ lệ
+        self.root.update_idletasks()  # Ensure the canvas size is updated
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
-        img_width, img_height = self.image.size
+        img_width, img_height = self.image_original.size
         aspect_ratio = img_width / img_height
         if canvas_width / canvas_height > aspect_ratio:
             new_height = canvas_height
@@ -177,16 +199,17 @@ class LabelingApp:
             new_height = int(new_width / aspect_ratio)
         self.scale_x = img_width / new_width  # Tỷ lệ gốc / hiển thị
         self.scale_y = img_height / new_height  # Tỷ lệ gốc / hiển thị
-        resized_image = self.image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        resized_image = self.image_original.resize((new_width, new_height), Image.Resampling.LANCZOS)
         self.photo = ImageTk.PhotoImage(resized_image)
+        self.image = resized_image  # Cập nhật self.image để sử dụng sau này
         # Tính toán vị trí để căn giữa ảnh trên canvas
-        x_offset = (canvas_width - new_width) // 2
-        y_offset = (canvas_height - new_height) // 2
-        self.canvas.create_image(x_offset + new_width // 2, y_offset + new_height // 2, image=self.photo, anchor=tk.CENTER, tags="image")
+        self.x_offset = (canvas_width - new_width) // 2
+        self.y_offset = (canvas_height - new_height) // 2
+        self.canvas.create_image(self.x_offset + new_width // 2, self.y_offset + new_height // 2, image=self.photo, anchor=tk.CENTER, tags="image")
         # Vẽ lưới tọa độ phù hợp với kích thước ảnh
-        self.draw_grid(x_offset, y_offset, new_width, new_height)
+        self.draw_grid(self.x_offset, self.y_offset, new_width, new_height)
         # Bind sự kiện di chuyển chuột để hiển thị tọa độ động
-        self.canvas.bind("<Motion>", lambda event: self.show_mouse_coordinates(event, x_offset, y_offset))
+        self.canvas.bind("<Motion>", lambda event: self.show_mouse_coordinates(event, self.x_offset, self.y_offset))
         # Reset các ô nhập liệu khi tải ảnh mới
         self.reset_input_fields()
         # Tải labels từ file JSON nếu có
@@ -194,6 +217,8 @@ class LabelingApp:
         # Cập nhật danh sách labels trong Listbox
         self.update_label_listbox()
         self.status_label.config(text="Please draw a bounding box.")  # Reset thông báo
+        # Vẽ lại labels để đảm bảo chúng khớp với ảnh
+        self.apply_zoom()
 
     def rotate_image_based_on_exif(self, image):
         """Xoay ảnh dựa trên thông tin EXIF."""
@@ -214,13 +239,13 @@ class LabelingApp:
         return image
 
     def draw_grid(self, x_offset, y_offset, width, height):
-        """Vẽ lưới tọa độ phù hợp với kích thước ảnh."""
-        grid_size = 30  # Kích thước mỗi ô lưới
-        for x in range(0, width, grid_size):
-            self.canvas.create_line(x_offset + x, y_offset, x_offset + x, y_offset + height, fill="gray", dash=(2, 2))
-        for y in range(0, height, grid_size):
-            self.canvas.create_line(x_offset, y_offset + y, x_offset + width, y_offset + y, fill="gray", dash=(2, 2))
-
+        # """Vẽ lưới tọa độ phù hợp với kích thước ảnh."""
+        # grid_size = 50  # Kích thước mỗi ô lưới
+        # for x in range(0, width, grid_size):
+        #     self.canvas.create_line(x_offset + x, y_offset, x_offset + x, y_offset + height, fill="gray", dash=(2, 2))
+        # for y in range(0, height, grid_size):
+        #     self.canvas.create_line(x_offset, y_offset + y, x_offset + width, y_offset + y, fill="gray", dash=(2, 2))
+        pass
     def show_mouse_coordinates(self, event, x_offset, y_offset):
         """Hiển thị tọa độ hiện tại của con trỏ chuột."""
         # Kiểm tra xem con trỏ chuột có nằm trong vùng ảnh hay không
@@ -263,7 +288,7 @@ class LabelingApp:
         base_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
         json_path = os.path.join(self.output_folder, f"{base_name}.json")
         if os.path.exists(json_path):
-            with open(json_path, "r") as f:
+            with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self.labels = data.get("form", [])
             for label in self.labels:
@@ -273,7 +298,7 @@ class LabelingApp:
                     if isinstance(word.get("box"), tuple):
                         word["box"] = list(word["box"])  # Chuyển tuple thành danh sách
                     if not isinstance(word.get("box"), list) or len(word["box"]) != 4:
-                        print(f"Invalid word box: {word['box']}. Setting to default [(0, 0), (0, 0), (0, 0), (0, 0)].")
+                        # print(f"Invalid word box: {word['box']}. Setting to default [(0, 0), (0, 0), (0, 0), (0, 0)].")
                         word["box"] = [(0, 0), (0, 0), (0, 0), (0, 0)]  # Thiết lập giá trị mặc định
             self.redraw_labels()
         else:
@@ -287,7 +312,7 @@ class LabelingApp:
         json_path = os.path.join(self.output_folder, f"{base_name}.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump({"form": self.labels}, f, indent=4, ensure_ascii=False)
-        print(f"Labels saved to {json_path}")
+        # print(f"Labels saved to {json_path}")
         # Cập nhật giao diện thời gian thực
         self.update_thumbnail_status()
 
@@ -454,23 +479,28 @@ class LabelingApp:
     def on_mouse_press(self, event):
         if not self.is_labeling_word:
             if len(self.current_points) < 4:
-                self.current_points.append((event.x, event.y))
+                # Chuyển đổi tọa độ từ hệ tọa độ hiển thị sang hệ tọa độ gốc
+                original_x = int((event.x - self.pan_offset_x) / self.zoom_level)
+                original_y = int((event.y - self.pan_offset_y) / self.zoom_level)
+                self.current_points.append((original_x, original_y))
+                # print(f"Drawing point: ({original_x}, {original_y}) at screen ({event.x}, {event.y})")  # Debug print
                 self.canvas.create_oval(event.x-2, event.y-2, event.x+2, event.y+2, fill="red", tags="point")
                 if len(self.current_points) > 1:
-                    self.canvas.create_line(self.current_points[-2][0], self.current_points[-2][1], event.x, event.y, fill="red", tags="line")
+                    self.canvas.create_line(self.current_points[-2][0] * self.zoom_level + self.pan_offset_x, self.current_points[-2][1] * self.zoom_level + self.pan_offset_y, event.x, event.y, fill="red", tags="line")
                 if len(self.current_points) == 4:
-                    # Vẽ đường nối giữa điểm cuối và điểm đầu
-                    self.canvas.create_line(self.current_points[-1][0], self.current_points[-1][1], self.current_points[0][0], self.current_points[0][1], fill="red", tags="line")
+                    self.canvas.create_line(event.x, event.y, self.current_points[0][0] * self.zoom_level + self.pan_offset_x, self.current_points[0][1] * self.zoom_level + self.pan_offset_y, fill="red", tags="line")
                     self.finalize_label()
         else:
             if len(self.word_box_points) < 4:
-                self.word_box_points.append((event.x, event.y))
+                original_x = int((event.x - self.pan_offset_x) / self.zoom_level)
+                original_y = int((event.y - self.pan_offset_y) / self.zoom_level)
+                self.word_box_points.append((original_x, original_y))
+                # print(f"Drawing word point: ({original_x}, {original_y}) at screen ({event.x}, {event.y})")  # Debug print
                 self.canvas.create_oval(event.x-2, event.y-2, event.x+2, event.y+2, fill="green", tags="word_point")
                 if len(self.word_box_points) > 1:
-                    self.canvas.create_line(self.word_box_points[-2][0], self.word_box_points[-2][1], event.x, event.y, fill="green", tags="word_line")
+                    self.canvas.create_line(self.word_box_points[-2][0] * self.zoom_level + self.pan_offset_x, self.word_box_points[-2][1] * self.zoom_level + self.pan_offset_y, event.x, event.y, fill="green", tags="word_line")
                 if len(self.word_box_points) == 4:
-                    # Vẽ đường nối giữa điểm cuối và điểm đầu
-                    self.canvas.create_line(self.word_box_points[-1][0], self.word_box_points[-1][1], self.word_box_points[0][0], self.word_box_points[0][1], fill="green", tags="word_line")
+                    self.canvas.create_line(event.x, event.y, self.word_box_points[0][0] * self.zoom_level + self.pan_offset_x, self.word_box_points[0][1] * self.zoom_level + self.pan_offset_y, fill="green", tags="word_line")
                     self.save_word_label(self.word_box_points)
                     self.word_box_points = []
 
@@ -482,28 +512,8 @@ class LabelingApp:
 
     def finalize_label(self):
         if len(self.current_points) == 4:
-            # Chuyển đổi tọa độ về kích thước gốc của ảnh
-            canvas_width = self.canvas.winfo_width()
-            canvas_height = self.canvas.winfo_height()
-            img_width, img_height = self.image.size
-            aspect_ratio = img_width / img_height
-            if canvas_width / canvas_height > aspect_ratio:
-                new_height = canvas_height
-                new_width = int(new_height * aspect_ratio)
-            else:
-                new_width = canvas_width
-                new_height = int(new_width / aspect_ratio)
-            x_offset = (canvas_width - new_width) // 2
-            y_offset = (canvas_height - new_height) // 2
-            original_points = []
-            for point in self.current_points:
-                original_point = (
-                    int((point[0] - x_offset) * self.scale_x),
-                    int((point[1] - y_offset) * self.scale_y)
-                )
-                original_points.append(original_point)
             self.current_label = {
-                "box": original_points,  # Thay thế points thành box
+                "box": self.current_points,  # Lưu tọa độ gốc
                 "text": "",
                 "label": "",
                 "words": [],
@@ -522,43 +532,12 @@ class LabelingApp:
     def redraw_labels(self):
         """Vẽ lại tất cả labels trên canvas."""
         self.canvas.delete("label")
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
-        img_width, img_height = self.image.size
-        aspect_ratio = img_width / img_height
-        if canvas_width / canvas_height > aspect_ratio:
-            new_height = canvas_height
-            new_width = int(new_height * aspect_ratio)
-        else:
-            new_width = canvas_width
-            new_height = int(new_width / aspect_ratio)
-        self.x_offset = (canvas_width - new_width) // 2
-        self.y_offset = (canvas_height - new_height) // 2
         for label in self.labels:
-            # Chuyển đổi tọa độ từ kích thước gốc sang kích thước hiển thị
-            scaled_box = []
-            for point in label["box"]:
-                scaled_point = (
-                    int(point[0] / self.scale_x) + self.x_offset,
-                    int(point[1] / self.scale_y) + self.y_offset
-                )
-                scaled_box.append(scaled_point)
-            # Vẽ đa giác cho box tổng
+            scaled_box = [(int(point[0] * self.zoom_level) + self.pan_offset_x, int(point[1] * self.zoom_level) + self.pan_offset_y) for point in label["box"]]
             self.canvas.create_polygon(*[coord for point in scaled_box for coord in point], outline="blue", fill="", tags="label")
             for word in label["words"]:
                 if "box" in word:
-                    # Đảm bảo word["box"] là một danh sách chứa 4 điểm
-                    if isinstance(word["box"], tuple):
-                        word["box"] = list(word["box"])  # Chuyển tuple thành danh sách
-                    if not isinstance(word.get("box"), list) or len(word["box"]) != 4:
-                        print(f"Invalid word box: {word['box']}. Skipping this word.")
-                        continue  # Bỏ qua word này nếu box không hợp lệ
-                    # Chuyển đổi tọa độ về kích thước hiển thị
-                    scaled_word_box = [
-                        (int(point[0] / self.scale_x) + self.x_offset, int(point[1] / self.scale_y) + self.y_offset)
-                        for point in word["box"]
-                    ]
-                    print(f"Drawing word box: {scaled_word_box}")
+                    scaled_word_box = [(int(point[0] * self.zoom_level) + self.pan_offset_x, int(point[1] * self.zoom_level) + self.pan_offset_y) for point in word["box"]]
                     self.canvas.create_polygon(*[coord for point in scaled_word_box for coord in point], outline="green", fill="", tags="label")
 
     def correct_coordinates(self, points):
@@ -577,17 +556,8 @@ class LabelingApp:
             word = self.word_boxes[self.current_word_index]
             # Đảm bảo points là danh sách chứa 4 điểm
             if len(points) == 4:
-                corrected_points = self.correct_coordinates(points)
-                # Chuyển đổi tọa độ về kích thước gốc của ảnh
-                original_points = []
-                for point in corrected_points:
-                    original_point = (
-                        int((point[0] - self.x_offset) * self.scale_x),
-                        int((point[1] - self.y_offset) * self.scale_y)
-                    )
-                    original_points.append(original_point)
-                word["box"] = original_points  # Lưu dưới dạng danh sách 4 điểm
-                print(f"Saved word box: {word['box']}")
+                # print(f"Saving word box: {points}")  # Debug print
+                word["box"] = points
                 self.current_word_index += 1
                 if self.current_word_index < len(self.word_boxes):
                     # Vẫn còn từ cần đánh bbox
@@ -604,10 +574,7 @@ class LabelingApp:
                     # Lưu labels vào file JSON ngay lập tức
                     self.save_labels()
             else:
-                print(f"Invalid points for word box: {points}")
                 self.status_label.config(text="Error: Invalid points for word box.")
-        else:
-            print("Current word index out of range.")
 
     def save_linking(self):
         """Lưu thông tin linking."""
@@ -639,14 +606,78 @@ class LabelingApp:
     def cancel_current_label(self, event):
         """Hủy bỏ label hiện tại khi click chuột phải."""
         if self.current_label:
-            print("Canceling current label.")
+            # print("Canceling current label.")
             self.current_label = None
             self.redraw_labels()
             self.reset_input_fields()
             self.status_label.config(text="Current label canceled. Please draw a new bounding box.")
         else:
-            print("No current label to cancel.")
+            # print("No current label to cancel.")
             self.status_label.config(text="No current label to cancel.")
+
+    def rotate_left(self):
+        """Xoay ảnh gốc sang trái 90 độ và lưu lại."""
+        self.rotation_angle = (self.rotation_angle - 90) % 360  # Giữ góc xoay tích lũy
+        self.apply_rotation()
+
+    def rotate_right(self):
+        """Xoay ảnh gốc sang phải 90 độ và lưu lại."""
+        self.rotation_angle = (self.rotation_angle + 90) % 360  # Giữ góc xoay tích lũy
+        self.apply_rotation()
+
+    def apply_rotation(self):
+        """Xoay ảnh, cập nhật ảnh gốc và đồng bộ hiển thị."""
+        if self.current_image_path:
+            # Mở ảnh gốc và xoay theo self.rotation_angle mới cập nhật
+            self.image = Image.open(self.current_image_path)
+            self.image = self.image.rotate(self.rotation_angle, expand=True)
+
+            # Lưu ảnh đã xoay đè lên ảnh gốc
+            self.image.save(self.current_image_path)
+
+            # Đặt lại rotation_angle về 0 để tránh xoay lặp lại lần sau
+            self.rotation_angle = 0
+
+            # Tải lại ảnh để đồng bộ hiển thị
+            self.load_image(self.current_image_path)
+
+    def on_zoom(self, event):
+        """Xử lý sự kiện zoom khi cuộn chuột."""
+        scale_factor = 1.1 if event.delta > 0 else 0.9
+        self.zoom_level *= scale_factor
+        self.zoom_level = max(0.1, min(self.zoom_level, 10))  # Giới hạn mức độ zoom
+        self.apply_zoom()
+
+    def on_pan_start(self, event):
+        """Bắt đầu sự kiện pan khi nhấn chuột giữa."""
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+
+    def on_pan_move(self, event):
+        """Xử lý sự kiện pan khi di chuyển chuột giữa."""
+        dx = event.x - self.pan_start_x
+        dy = event.y - self.pan_start_y
+        self.pan_offset_x += dx
+        self.pan_offset_y += dy
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+        self.apply_zoom()
+
+    def apply_zoom(self):
+        if self.image_original:
+            img_width, img_height = self.image_original.size
+            new_width = int(img_width * self.zoom_level)
+            new_height = int(img_height * self.zoom_level)
+            self.scale_x = img_width / new_width  # Cập nhật tỷ lệ x
+            self.scale_y = img_height / new_height  # Cập nhật tỷ lệ y
+            resized_image = self.image_original.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            self.photo = ImageTk.PhotoImage(resized_image)
+            self.image = resized_image
+            self.canvas.delete("all")
+            self.canvas.create_image(self.pan_offset_x, self.pan_offset_y, image=self.photo, anchor=tk.NW, tags="image")
+            self.draw_grid(self.pan_offset_x, self.pan_offset_y, new_width, new_height)
+            self.redraw_labels()
+
 
 if __name__ == "__main__":
     root = tk.Tk()

@@ -3,14 +3,19 @@ import json
 import cv2
 import numpy as np
 
+image_name = "0001"
+
 # Đường dẫn đến file ảnh gốc
-image_path = "./images/0001.jpg"
+image_path = f"./images/{image_name}.jpg"
 
 # Đường dẫn đến file JSON chứa thông tin bounding box
-json_path = "./output/0001.json"
+json_path = f"./output/{image_name}.json"
 
 # Đọc ảnh gốc
 image = cv2.imread(image_path)
+if image is None:
+    print(f"Error: Unable to open image file {image_path}")
+    exit(1)
 
 # Đọc file JSON
 with open(json_path, 'r', encoding='utf-8') as f:
@@ -96,3 +101,8 @@ draw_boxes(resized_image, scaled_form_data, draw_words=True)
 cv2.imshow('Scaled Image with Bounding Boxes', resized_image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
+
+# Lưu ảnh 
+output_path = "image.png"
+cv2.imwrite(output_path, resized_image)
+print(f"Saved image to {output_path}")
