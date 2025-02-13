@@ -139,6 +139,19 @@ Image Labeling Tool là một ứng dụng hỗ trợ gán nhãn (label) cho pro
     }
     ```
 
+## **Giải thích cách dùng**
+
+| **Nhãn**       | **Chức năng**            | **Ví dụ dữ liệu**                |
+| -------------- | ------------------------ | -------------------------------- |
+| `name`         | Tên sản phẩm             | "HEO CAO BỒI - Thịt Viên 3 Phút" |
+| `mfg_label`    | Nhãn chỉ ngày sản xuất   | "NSX"                            |
+| `mfg`          | Ngày sản xuất            | "150824-6-2 804"                 |
+| `exp_label`    | Nhãn chỉ hạn sử dụng     | "HSD"                            |
+| `exp`          | Hạn sử dụng              | "150825 13:28"                   |
+| `weight_label` | Nhãn chỉ khối lượng tịnh | "Khối lượng tịnh"                |
+| `weight`       | Khối lượng tịnh          | "200g"                           |
+| `other`        | Thông tin khác           | "Đã nấu chín"                    |
+
 ## Demo
 
 Demo `app.py`

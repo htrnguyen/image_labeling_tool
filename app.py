@@ -13,7 +13,7 @@ class LabelingApp:
         self.root.title("Image Labeling Tool")
         self.root.state('zoomed')  # Mở ứng dụng ở chế độ full màn hình
         # Cấu hình đường dẫn
-        self.image_folder = "images"  # Folder chứa ảnh
+        self.image_folder = "images_old"  # Folder chứa ảnh
         self.output_folder = "output"  # Folder chứa output JSON
         os.makedirs(self.output_folder, exist_ok=True)  # Tạo folder nếu chưa tồn tại
         self.current_image_path = None
@@ -239,35 +239,37 @@ class LabelingApp:
         return image
 
     def draw_grid(self, x_offset, y_offset, width, height):
-        # """Vẽ lưới tọa độ phù hợp với kích thước ảnh."""
-        # grid_size = 50  # Kích thước mỗi ô lưới
-        # for x in range(0, width, grid_size):
-        #     self.canvas.create_line(x_offset + x, y_offset, x_offset + x, y_offset + height, fill="gray", dash=(2, 2))
-        # for y in range(0, height, grid_size):
-        #     self.canvas.create_line(x_offset, y_offset + y, x_offset + width, y_offset + y, fill="gray", dash=(2, 2))
-        pass
+        """Vẽ lưới tọa độ phù hợp với kích thước ảnh."""
+        grid_size = 20  # Kích thước mỗi ô lưới
+        for x in range(0, width, grid_size):
+            self.canvas.create_line(x_offset + x, y_offset, x_offset + x, y_offset + height, fill="gray", dash=(2, 2))
+        for y in range(0, height, grid_size):
+            self.canvas.create_line(x_offset, y_offset + y, x_offset + width, y_offset + y, fill="gray", dash=(2, 2))
+        # pass
+        
     def show_mouse_coordinates(self, event, x_offset, y_offset):
-        """Hiển thị tọa độ hiện tại của con trỏ chuột."""
-        # Kiểm tra xem con trỏ chuột có nằm trong vùng ảnh hay không
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
-        img_width, img_height = self.image.size
-        aspect_ratio = img_width / img_height
-        if canvas_width / canvas_height > aspect_ratio:
-            new_height = canvas_height
-            new_width = int(new_height * aspect_ratio)
-        else:
-            new_width = canvas_width
-            new_height = int(new_width / aspect_ratio)
-        x_offset = (canvas_width - new_width) // 2
-        y_offset = (canvas_height - new_height) // 2
-        if x_offset <= event.x < x_offset + new_width and y_offset <= event.y < y_offset + new_height:
-            # Chuyển đổi tọa độ từ hệ tọa độ hiển thị sang hệ tọa độ gốc
-            original_x = int((event.x - x_offset) * self.scale_x)
-            original_y = int((event.y - y_offset) * self.scale_y)
-            self.status_label.config(text=f"Mouse Position: ({original_x}, {original_y})")
-        else:
-            self.status_label.config(text="Mouse is outside the image area.")
+        # """Hiển thị tọa độ hiện tại của con trỏ chuột."""
+        # # Kiểm tra xem con trỏ chuột có nằm trong vùng ảnh hay không
+        # canvas_width = self.canvas.winfo_width()
+        # canvas_height = self.canvas.winfo_height()
+        # img_width, img_height = self.image.size
+        # aspect_ratio = img_width / img_height
+        # if canvas_width / canvas_height > aspect_ratio:
+        #     new_height = canvas_height
+        #     new_width = int(new_height * aspect_ratio)
+        # else:
+        #     new_width = canvas_width
+        #     new_height = int(new_width / aspect_ratio)
+        # x_offset = (canvas_width - new_width) // 2
+        # y_offset = (canvas_height - new_height) // 2
+        # if x_offset <= event.x < x_offset + new_width and y_offset <= event.y < y_offset + new_height:
+        #     # Chuyển đổi tọa độ từ hệ tọa độ hiển thị sang hệ tọa độ gốc
+        #     original_x = int((event.x - x_offset) * self.scale_x)
+        #     original_y = int((event.y - y_offset) * self.scale_y)
+        #     self.status_label.config(text=f"Mouse Position: ({original_x}, {original_y})")
+        # else:
+        #     self.status_label.config(text="Mouse is outside the image area.")
+        pass
 
     def reset_input_fields(self):
         """Reset tất cả các ô nhập liệu."""
@@ -287,10 +289,22 @@ class LabelingApp:
         """Tải labels từ file JSON nếu có."""
         base_name = os.path.splitext(os.path.basename(self.current_image_path))[0]
         json_path = os.path.join(self.output_folder, f"{base_name}.json")
+        
+        # Reset id counter khi load ảnh mới
+        self.id_counter = 1
+        
         if os.path.exists(json_path):
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self.labels = data.get("form", [])
+            
+            # Tìm id lớn nhất trong danh sách labels
+            max_id = 0
+            for label in self.labels:
+                if "id" in label and isinstance(label["id"], int):
+                    max_id = max(max_id, label["id"])
+            self.id_counter = max_id + 1
+            
             for label in self.labels:
                 if "points" in label:
                     label["box"] = label.pop("points")  # Thay thế points thành box
@@ -363,6 +377,9 @@ class LabelingApp:
                 label["id"] = new_id
                 self.update_label_listbox()
                 self.save_labels()  # Lưu thay đổi vào file JSON
+                
+                # Reset các ô nhập liệu sau khi chỉnh sửa ID
+                self.reset_input_fields()
                 self.status_label.config(text=f"ID updated to {new_id}.")
 
     def edit_selected_linking(self):
@@ -382,6 +399,10 @@ class LabelingApp:
                     label["linking"] = linking_data
                     self.update_label_listbox()
                     self.save_labels()  # Lưu thay đổi vào file JSON
+                    
+                    # Reset các ô nhập liệu sau khi chỉnh sửa Linking
+                    self.reset_input_fields()
+                    
                     self.status_label.config(text="Linking updated.")
                 except ValueError:
                     messagebox.showerror("Error", "Invalid input. Please enter valid IDs separated by spaces.")
@@ -395,6 +416,10 @@ class LabelingApp:
             self.labels.pop(index)
             self.redraw_labels()
             self.update_label_listbox()
+            
+            # Reset các ô nhập liệu sau khi xóa label
+            self.reset_input_fields()
+            
             self.status_label.config(text="Label deleted.")
             # Kiểm tra xem label cần xóa có là current_label hay không
             if self.current_label and self.current_label["id"] == label_to_delete["id"]:

@@ -2,6 +2,7 @@ import json
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 image_name = "0001"
 
@@ -33,6 +34,10 @@ def get_rotation_angle(box):
 
 # Hàm để vẽ các bounding box lên hình ảnh
 def draw_boxes(image, form_data, draw_words=False):
+    pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(pil_image)
+    font = ImageFont.truetype("arial.ttf", 20)  # Sử dụng font Arial hỗ trợ tiếng Việt
+
     for item in form_data:
         # Vẽ bounding box cho label
         box = item['box']
@@ -40,8 +45,8 @@ def draw_boxes(image, form_data, draw_words=False):
         label = item['label']
         pts = np.array(box, np.int32).reshape((-1, 1, 2))
         cv2.polylines(image, [pts], True, (0, 255, 0), 1)
-        cv2.putText(image, f'{label}: {text}', tuple(box[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-        
+        draw.text(tuple(box[0]), f'{label}: {text}', font=font, fill=(0, 0, 255))
+
         # Vẽ bounding box cho từng từ (word) nếu cần
         if draw_words:
             words = item.get('words', [])
@@ -51,11 +56,13 @@ def draw_boxes(image, form_data, draw_words=False):
                 word_text = word['text']
                 word_pts = np.array(word_box, np.int32).reshape((-1, 1, 2))
                 word_tuple = tuple(map(tuple, word_box))  # Chuyển thành tuple để lưu trong set
-                
+
                 if word_tuple not in drawn_boxes:
                     cv2.polylines(image, [word_pts], True, (255, 0, 0), 1)
-                    cv2.putText(image, word_text, tuple(word_box[0]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+                    draw.text(tuple(word_box[0]), word_text, font=font, fill=(255, 0, 0))
                     drawn_boxes.add(word_tuple)
+
+    return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
 # Xác định kích thước màn hình
 screen_width = 1600  # Thay đổi nếu cần
@@ -95,7 +102,7 @@ for item in data['form']:
     })
 
 # Vẽ bounding box lên ảnh đã scale
-draw_boxes(resized_image, scaled_form_data, draw_words=True)
+resized_image = draw_boxes(resized_image, scaled_form_data, draw_words=True)
 
 # Hiển thị ảnh
 cv2.imshow('Scaled Image with Bounding Boxes', resized_image)
