@@ -83,7 +83,7 @@ class LabelingApp:
         tk.Label(self.info_frame, text="Label Name:", bg="lightblue").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         self.label_name_var = tk.StringVar(self.info_frame)
         self.label_name_var.set("name")  # Set default value
-        self.label_name_options = ["name", "mfg", "exp", "weight", "other"]
+        self.label_name_options = ["brand", "name", "mfg", "exp", "weight", "other"]
         self.label_name_menu = tk.OptionMenu(self.info_frame, self.label_name_var, *self.label_name_options)
         self.label_name_menu.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         tk.Label(self.info_frame, text="Linking (e.g., '1 2'):", bg="lightblue").grid(row=2, column=0, sticky="w", padx=5, pady=5)
