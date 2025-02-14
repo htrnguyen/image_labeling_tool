@@ -13,7 +13,7 @@ class LabelingApp:
         self.root.title("Image Labeling Tool")
         self.root.state('zoomed')  # Mở ứng dụng ở chế độ full màn hình
         # Cấu hình đường dẫn
-        self.image_folder = "images_old"  # Folder chứa ảnh
+        self.image_folder = "images"  # Folder chứa ảnh
         self.output_folder = "output"  # Folder chứa output JSON
         os.makedirs(self.output_folder, exist_ok=True)  # Tạo folder nếu chưa tồn tại
         self.current_image_path = None
